@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-# ================== تثبيت المكتبات تلقائياً ==================
+# ================== التثبيت التلقائي للمكتبات ==================
 import subprocess
 import sys
 import time
 
 def install_packages():
+    """تثبيت المكتبات المطلوبة إذا لم تكن مثبتة"""
     packages = ['pyTelegramBotAPI==4.14.0', 'requests==2.31.0']
     for package in packages:
         try:
@@ -20,20 +21,29 @@ import telebot
 import requests
 import os
 from datetime import datetime, timedelta
+from telebot import apihelper
 
 # ================== تكوين البوت ==================
 BOT_TOKEN = '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk'
 bot = telebot.TeleBot(BOT_TOKEN)
-bot.remove_webhook()  # تأكيد إزالة الويب هوك لتجنب conflict
 
-# تخزين مؤقت في الذاكرة
+# محاولة إزالة أي webhook عالق (لمنع conflict)
+try:
+    bot.remove_webhook()
+    time.sleep(1)
+except Exception as e:
+    print(f"⚠️ لم نتمكن من إزالة webhook: {e}")
+
+# تخزين مؤقت في الذاكرة (بدلاً من ملف JSON)
 user_data_cache = {}
 
 # ================== دوال مساعدة ==================
 def hide_phone_number(phone_number):
+    """إخفاء الرقم ما عدا أول 4 وآخر رقمين"""
     return phone_number[:4] + '*******' + phone_number[-2:]
 
 def send_otp(msisdn):
+    """إرسال رمز OTP إلى الرقم"""
     url = 'https://apim.djezzy.dz/oauth2/registration'
     payload = f'msisdn={msisdn}&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&scope=smsotp'
     headers = {
@@ -50,6 +60,7 @@ def send_otp(msisdn):
         return False
 
 def verify_otp(msisdn, otp):
+    """التحقق من رمز OTP والحصول على التوكن"""
     url = 'https://apim.djezzy.dz/oauth2/token'
     payload = f'otp={otp}&mobileNumber={msisdn}&scope=openid&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&client_secret=MVpXHW_ImuMsxKIwrJpoVVMHjRsa&grant_type=mobile'
     headers = {
@@ -68,6 +79,7 @@ def verify_otp(msisdn, otp):
         return None
 
 def apply_gift(chat_id, msisdn, access_token, username, name):
+    """تطبيق الهدية على الرقم"""
     user_info = user_data_cache.get(str(chat_id))
     if user_info and user_info.get('last_applied'):
         last_time = datetime.fromisoformat(user_info['last_applied'])
@@ -125,6 +137,7 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
         return False
 
 def show_main_menu(chat_id, text="اختر الإجراء الذي تود القيام به:"):
+    """عرض القائمة الرئيسية بالأزرار"""
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
     btn_gift = telebot.types.InlineKeyboardButton("🎁 تفعيل هدية Walkwin", callback_data='walkwingift')
     btn_new = telebot.types.InlineKeyboardButton("🔄 رقم جديد", callback_data='send_number')
@@ -150,11 +163,11 @@ def handle_phone_number(msg):
     text = msg.text.strip()
     
     if text.startswith('07') and len(text) == 10 and text.isdigit():
-        msisdn = '213' + text[1:]
-        # رسالة انتظار
+        msisdn = '213' + text[1:]  # تحويل إلى الصيغة الدولية
+        # إرسال رسالة انتظار
         waiting_msg = bot.send_message(chat_id, "⏳ جاري إرسال رمز التحقق... الرجاء الانتظار")
         if send_otp(msisdn):
-            bot.delete_message(chat_id, waiting_msg.message_id)  # حذف رسالة الانتظار
+            bot.delete_message(chat_id, waiting_msg.message_id)
             bot.send_message(chat_id, '🔢 تم إرسال رمز OTP. أرسل الرمز الذي تلقيته:')
             bot.register_next_step_handler_by_chat_id(chat_id, lambda m: handle_otp(m, msisdn))
         else:
@@ -173,6 +186,7 @@ def handle_otp(msg, msisdn):
     bot.delete_message(chat_id, waiting_msg.message_id)
     
     if tokens:
+        # حفظ البيانات في الذاكرة
         user_data_cache[str(chat_id)] = {
             'username': msg.from_user.username or "لا يوجد",
             'telegram_id': chat_id,
@@ -203,19 +217,29 @@ def handle_walkwingift(callback):
     bot.delete_message(chat_id, waiting_msg.message_id)
     show_main_menu(chat_id, "تم تنفيذ العملية. اختر خيارًا آخر:")
 
-# ================== بدء التشغيل مع معالجة conflict ==================
+# ================== بدء التشغيل مع معالجة الأخطاء ==================
 if __name__ == '__main__':
-    print('✅ البوت شغال...')
+    print('✅ بدء تشغيل البوت...')
     print('📦 تم تثبيت جميع المكتبات المطلوبة')
-    # محاولة التشغيل مع معالجة 409
+    
+    # حلقة لا نهائية لمعالجة الخطأ 409 وإعادة المحاولة
     while True:
         try:
+            print('🚀 البوت يعمل الآن...')
             bot.polling(none_stop=True, interval=0, timeout=20)
-        except Exception as e:
+        except apihelper.ApiTelegramException as e:
             if "409" in str(e):
-                print("⚠️ تم اكتشاف نسخة أخرى من البوت. سيتم إعادة المحاولة بعد 5 ثوانٍ...")
-                time.sleep(5)
+                print("⚠️ تم اكتشاف نسخة أخرى من البوت (خطأ 409). جاري إعادة المحاولة بعد 10 ثوانٍ...")
+                time.sleep(10)
+                # محاولة إزالة webhook مرة أخرى
+                try:
+                    bot.remove_webhook()
+                except:
+                    pass
                 continue
             else:
                 print(f"❌ خطأ غير متوقع: {e}")
                 time.sleep(5)
+        except Exception as e:
+            print(f"❌ خطأ عام: {e}")
+            time.sleep(5)
