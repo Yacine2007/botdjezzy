@@ -47,10 +47,17 @@ def send_otp(msisdn):
     try:
         logger.info(f"📤 إرسال OTP إلى: {msisdn}")
         response = requests.post(url, data=payload, headers=headers, timeout=20)
-        logger.info(f"📥 Status: {response.status_code} | Response: {response.text}")
+        logger.info(f"📥 Status: {response.status_code}")
+        logger.info(f"📥 Response: {response.text}")
         return response.status_code == 200
+    except requests.exceptions.ConnectionError as e:
+        logger.error(f'❌ ConnectionError - الخادم محجوب أو غير متاح: {e}')
+        return False
+    except requests.exceptions.Timeout as e:
+        logger.error(f'❌ Timeout - انتهت مهلة الاتصال بـ Djezzy: {e}')
+        return False
     except requests.RequestException as e:
-        logger.error(f'⚠️ خطأ في إرسال OTP: {e}')
+        logger.error(f'❌ RequestError [{type(e).__name__}]: {e}')
         return False
 
 def verify_otp(msisdn, otp):
