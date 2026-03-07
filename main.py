@@ -25,7 +25,10 @@ import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 # ================== Render Port Solution ==================
-if os.environ.get('PORT'):
+# IMPORTANT: This MUST run before anything else on Render
+if os.environ.get('RENDER') or os.environ.get('PORT'):
+    print("🌐 Render environment detected, starting HTTP server...")
+    
     class HealthCheckHandler(BaseHTTPRequestHandler):
         def do_GET(self):
             self.send_response(200)
@@ -39,9 +42,13 @@ if os.environ.get('PORT'):
         print(f"🌐 HTTP dummy server running on port {port}")
         server.serve_forever()
 
+    # Start HTTP server in a separate thread
     http_thread = threading.Thread(target=run_http_server, daemon=True)
     http_thread.start()
-    print("✅ HTTP dummy server started for Render")
+    print("✅ HTTP dummy server started successfully")
+    time.sleep(2)  # Give it time to start
+else:
+    print("📱 Running locally - no HTTP server needed")
 
 # ================== Bot Configuration ==================
 BOT_TOKEN = '8715052656:AAHifc8Q1Ns-u0twtvXIVS8GIpViIvQ0pHE'
@@ -56,6 +63,7 @@ try:
     bot.remove_webhook()
     time.sleep(2)
     print("✅ Webhook removed")
+    
     print("🔄 Clearing pending updates...")
     updates = bot.get_updates(offset=-1, timeout=1)
     if updates:
@@ -152,7 +160,6 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
         print(f"📥 Gift response status: {response.status_code}")
         print(f"📥 Gift response: {response.text}")
         
-        # Check if response is empty
         if not response.text:
             bot.send_message(chat_id, "⚠️ استجابة فارغة من الخادم. حاول مرة أخرى.")
             return False
@@ -278,8 +285,8 @@ if __name__ == '__main__':
                 time.sleep(10)
                 bot.remove_webhook()
             else:
-                print(f"❌ Error: {e}")
+                print(f"❌ Telegram API Error: {e}")
                 time.sleep(5)
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(f"❌ General Error: {e}")
             time.sleep(5)
