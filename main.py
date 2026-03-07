@@ -4,17 +4,6 @@ import subprocess
 import sys
 import time
 
-def install_packages():
-    packages = ['pyTelegramBotAPI==4.14.0', 'requests==2.31.0', 'flask==2.3.3']
-    for package in packages:
-        try:
-            __import__(package.split('==')[0].lower())
-        except ImportError:
-            print(f'📦 Installing {package}...')
-            subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
-
-install_packages()
-
 # ================== Import Libraries ==================
 import telebot
 import requests
@@ -24,27 +13,21 @@ from telebot import apihelper
 import threading
 from flask import Flask
 
-# ================== Flask server for Render ==================
-# هذا يحل مشكلة المنفذ - نفس البيئة المحلية تماماً
+# ================== Flask server for Render (لا يؤثر على البوت) ==================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
     return "Bot is running!"
 
-@app.route('/health')
-def health():
-    return "OK", 200
-
 def run_flask():
     port = int(os.environ.get('PORT', 10000))
     print(f"🌐 Flask server running on port {port}")
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-# تشغيل Flask في خيط منفصل
 flask_thread = threading.Thread(target=run_flask, daemon=True)
 flask_thread.start()
-print("✅ Flask server started - bot will run normally")
+print("✅ Flask server started")
 
 # ================== Bot Configuration ==================
 BOT_TOKEN = '8715052656:AAHifc8Q1Ns-u0twtvXIVS8GIpViIvQ0pHE'
@@ -78,7 +61,7 @@ print("=" * 50)
 # In-memory storage
 user_data_cache = {}
 
-# ================== Helper Functions ==================
+# ================== Helper Functions (نفس الكود المحلي تماماً) ==================
 def hide_phone_number(phone_number):
     return phone_number[:4] + '*******' + phone_number[-2:]
 
@@ -97,7 +80,14 @@ def send_otp(msisdn):
         response = requests.post(url, data=payload, headers=headers, timeout=15)
         print(f"📥 Status code: {response.status_code}")
         print(f"📥 Response: {response.text}")
-        return response.status_code == 200
+        
+        # هذا هو المهم - نفس الشرط الذي نجح محلياً
+        if response.status_code == 200:
+            print("✅ OTP sent successfully")
+            return True
+        else:
+            print(f"⚠️ Failed with status {response.status_code}")
+            return False
     except requests.RequestException as e:
         print(f'⚠️ Error sending OTP: {e}')
         return False
@@ -181,13 +171,9 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
             error_msg = response_data.get('message', 'غير معروف')
             bot.send_message(chat_id, f"⚠️ حدث خطأ: {error_msg}")
             return False
-    except requests.RequestException as e:
+    except Exception as e:
         print(f'⚠️ Error applying gift: {e}')
-        bot.send_message(chat_id, "⚠️ حدث خطأ في الاتصال بالخادم. حاول مرة أخرى لاحقًا.")
-        return False
-    except ValueError as e:
-        print(f'⚠️ JSON parse error: {e}')
-        bot.send_message(chat_id, "⚠️ استجابة غير صالحة من الخادم.")
+        bot.send_message(chat_id, "⚠️ حدث خطأ أثناء تطبيق الهدية. حاول مرة أخرى لاحقًا.")
         return False
 
 def show_main_menu(chat_id, text="اختر الإجراء الذي تود القيام به:"):
@@ -197,7 +183,7 @@ def show_main_menu(chat_id, text="اختر الإجراء الذي تود الق
     markup.add(btn_gift, btn_new)
     bot.send_message(chat_id, text, reply_markup=markup)
 
-# ================== Bot Handlers ==================
+# ================== Bot Handlers (نفس الكود المحلي تماماً) ==================
 @bot.message_handler(commands=['start'])
 def handle_start(msg):
     chat_id = msg.chat.id
@@ -270,8 +256,7 @@ def handle_walkwingift(callback):
 
 # ================== Start Bot ==================
 if __name__ == '__main__':
-    print('✅ Bot is ready with Flask server')
-    print('🚀 Bot polling started - same as local execution')
+    print('✅ Bot is ready - same as local version')
     
     while True:
         try:
