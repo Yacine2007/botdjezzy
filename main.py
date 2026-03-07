@@ -45,18 +45,44 @@ http_thread = threading.Thread(target=run_http_server, daemon=True)
 http_thread.start()
 print("✅ تم تشغيل خادم HTTP الوهمي لتلبية متطلبات Render")
 
-# ================== تكوين البوت ==================
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk')
+# ================== تكوين البوت بالتوكن الجديد ==================
+BOT_TOKEN = '8715052656:AAFwgjUxcDGYhx7GBmWc7QoAg8fhUgQrMNE'
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# إزالة أي webhook عالق - مهم جداً لمنع خطأ 409
+# ================== تنظيف الجلسات السابقة ==================
+print("=" * 50)
+print("🔧 بدء تنظيف الجلسات السابقة...")
+print("=" * 50)
+
 try:
-    print("🔄 محاولة إزالة webhook...")
+    # إزالة webhook
+    print("📡 إزالة webhook...")
     bot.remove_webhook()
     time.sleep(2)
-    print("✅ تم إزالة webhook بنجاح")
+    print("✅ تمت إزالة webhook")
+    
+    # إنهاء التحديثات العالقة
+    print("🔄 إنهاء التحديثات العالقة...")
+    updates = bot.get_updates(offset=-1, timeout=1)
+    if updates:
+        last_id = updates[-1].update_id
+        bot.get_updates(offset=last_id + 1, timeout=1)
+        print(f"✅ تم إنهاء {len(updates)} تحديثات")
+    else:
+        print("✅ لا توجد تحديثات عالقة")
+    
+    # تعيين offset عالي
+    bot.get_updates(offset=999999999, timeout=1)
+    time.sleep(1)
+    
+    print("✅ تم تنظيف جميع الجلسات بنجاح")
+    
 except Exception as e:
-    print(f"⚠️ لم نتمكن من إزالة webhook: {e}")
+    print(f"⚠️ تحذير أثناء التنظيف: {e}")
+
+print("=" * 50)
+print("🚀 بدء تشغيل البوت...")
+print("=" * 50)
 
 # تخزين مؤقت في الذاكرة
 user_data_cache = {}
@@ -249,40 +275,13 @@ def handle_walkwingift(callback):
     bot.delete_message(chat_id, waiting_msg.message_id)
     show_main_menu(chat_id, "تم تنفيذ العملية. اختر خيارًا آخر:")
 
-# ================== بدء التشغيل مع معالجة 409 ==================
+# ================== بدء التشغيل ==================
 if __name__ == '__main__':
-    print('✅ بدء تشغيل البوت...')
-    print('📦 تم تثبيت جميع المكتبات المطلوبة')
+    print('✅ البوت جاهز للتشغيل')
     
-    # محاولة إزالة webhook مرة أخرى قبل البدء
-    try:
-        bot.remove_webhook()
-        time.sleep(2)
-    except:
-        pass
-    
-    counter = 0
     while True:
         try:
-            counter += 1
-            print(f'🚀 محاولة تشغيل البوت رقم {counter}...')
             bot.polling(none_stop=True, interval=0, timeout=20)
-        except apihelper.ApiTelegramException as e:
-            if "409" in str(e):
-                print("⚠️ تم اكتشاف نسخة أخرى من البوت (خطأ 409). جاري إعادة المحاولة بعد 15 ثانية...")
-                # محاولة أكثر قوة لإزالة webhook
-                try:
-                    print("🔄 محاولة إزالة webhook...")
-                    bot.remove_webhook()
-                    time.sleep(3)
-                    print("✅ تمت إزالة webhook")
-                except Exception as webhook_error:
-                    print(f"⚠️ فشلت إزالة webhook: {webhook_error}")
-                time.sleep(15)
-                continue
-            else:
-                print(f"❌ خطأ غير متوقع: {e}")
-                time.sleep(10)
         except Exception as e:
-            print(f"❌ خطأ عام: {e}")
-            time.sleep(10)
+            print(f"❌ خطأ: {e}")
+            time.sleep(5)
