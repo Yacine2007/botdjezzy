@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 
 # ================== تكوين البوت ==================
 # استخدم التوكن الجديد مباشرة (يمكنك استبداله بمتغير البيئة إذا أردت)
-BOT_TOKEN = '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk'
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk')
 bot = telebot.TeleBot(BOT_TOKEN)
 
 # تخزين مؤقت في الذاكرة
