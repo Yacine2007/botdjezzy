@@ -5,7 +5,6 @@ import sys
 import time
 
 def install_packages():
-    """تثبيت المكتبات المطلوبة إذا لم تكن مثبتة"""
     packages = ['pyTelegramBotAPI==4.14.0', 'requests==2.31.0']
     for package in packages:
         try:
@@ -22,12 +21,35 @@ import requests
 import os
 from datetime import datetime, timedelta
 from telebot import apihelper
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+
+# ================== حل مشكلة المنفذ في Render ==================
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is running")
+    
+    def log_message(self, format, *args):
+        pass  # إلغاء التسجيل لتجنب الإزعاج
+
+def run_http_server():
+    port = int(os.environ.get('PORT', 10000))
+    server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
+    print(f"🌐 خادم HTTP الوهمي يعمل على المنفذ {port}")
+    server.serve_forever()
+
+# تشغيل الخادم في خيط منفصل
+http_thread = threading.Thread(target=run_http_server, daemon=True)
+http_thread.start()
+print("✅ تم تشغيل خادم HTTP الوهمي لتلبية متطلبات Render")
 
 # ================== تكوين البوت ==================
-BOT_TOKEN = '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk'
+BOT_TOKEN = os.getenv('BOT_TOKEN', '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk')
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# محاولة إزالة أي webhook عالق (لمنع conflict)
+# محاولة إزالة أي webhook عالق (لمنع conflict 409)
 try:
     bot.remove_webhook()
     time.sleep(1)
@@ -43,7 +65,7 @@ def hide_phone_number(phone_number):
     return phone_number[:4] + '*******' + phone_number[-2:]
 
 def send_otp(msisdn):
-    """إرسال رمز OTP إلى الرقم"""
+    """إرسال رمز OTP للرقم"""
     url = 'https://apim.djezzy.dz/oauth2/registration'
     payload = f'msisdn={msisdn}&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&scope=smsotp'
     headers = {
@@ -60,7 +82,7 @@ def send_otp(msisdn):
         return False
 
 def verify_otp(msisdn, otp):
-    """التحقق من رمز OTP والحصول على التوكن"""
+    """التحقق من رمز OTP واسترجاع التوكنات"""
     url = 'https://apim.djezzy.dz/oauth2/token'
     payload = f'otp={otp}&mobileNumber={msisdn}&scope=openid&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&client_secret=MVpXHW_ImuMsxKIwrJpoVVMHjRsa&grant_type=mobile'
     headers = {
@@ -79,7 +101,7 @@ def verify_otp(msisdn, otp):
         return None
 
 def apply_gift(chat_id, msisdn, access_token, username, name):
-    """تطبيق الهدية على الرقم"""
+    """تفعيل الهدية للمستخدم"""
     user_info = user_data_cache.get(str(chat_id))
     if user_info and user_info.get('last_applied'):
         last_time = datetime.fromisoformat(user_info['last_applied'])
