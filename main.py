@@ -2,6 +2,7 @@
 # ================== تثبيت المكتبات تلقائياً ==================
 import subprocess
 import sys
+import time
 
 def install_packages():
     packages = ['pyTelegramBotAPI==4.14.0', 'requests==2.31.0']
@@ -21,20 +22,18 @@ import os
 from datetime import datetime, timedelta
 
 # ================== تكوين البوت ==================
-# استخدم التوكن الجديد مباشرة (يمكنك استبداله بمتغير البيئة إذا أردت)
-BOT_TOKEN = os.getenv('BOT_TOKEN', '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk')
+BOT_TOKEN = '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk'
 bot = telebot.TeleBot(BOT_TOKEN)
+bot.remove_webhook()  # تأكيد إزالة الويب هوك لتجنب conflict
 
 # تخزين مؤقت في الذاكرة
 user_data_cache = {}
 
 # ================== دوال مساعدة ==================
 def hide_phone_number(phone_number):
-    """إخفاء الرقم ما عدا أول 4 وآخر رقمين"""
     return phone_number[:4] + '*******' + phone_number[-2:]
 
 def send_otp(msisdn):
-    """إرسال رمز OTP للرقم"""
     url = 'https://apim.djezzy.dz/oauth2/registration'
     payload = f'msisdn={msisdn}&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&scope=smsotp'
     headers = {
@@ -51,7 +50,6 @@ def send_otp(msisdn):
         return False
 
 def verify_otp(msisdn, otp):
-    """التحقق من رمز OTP واسترجاع التوكنات"""
     url = 'https://apim.djezzy.dz/oauth2/token'
     payload = f'otp={otp}&mobileNumber={msisdn}&scope=openid&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&client_secret=MVpXHW_ImuMsxKIwrJpoVVMHjRsa&grant_type=mobile'
     headers = {
@@ -70,8 +68,6 @@ def verify_otp(msisdn, otp):
         return None
 
 def apply_gift(chat_id, msisdn, access_token, username, name):
-    """تفعيل الهدية للمستخدم"""
-    # التحقق من آخر تطبيق (24 ساعة)
     user_info = user_data_cache.get(str(chat_id))
     if user_info and user_info.get('last_applied'):
         last_time = datetime.fromisoformat(user_info['last_applied'])
@@ -117,7 +113,6 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
             )
             bot.send_message(chat_id, success_msg, parse_mode='Markdown')
             
-            # تحديث آخر تطبيق
             if str(chat_id) in user_data_cache:
                 user_data_cache[str(chat_id)]['last_applied'] = datetime.now().isoformat()
             return True
@@ -130,7 +125,6 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
         return False
 
 def show_main_menu(chat_id, text="اختر الإجراء الذي تود القيام به:"):
-    """عرض القائمة الرئيسية"""
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
     btn_gift = telebot.types.InlineKeyboardButton("🎁 تفعيل هدية Walkwin", callback_data='walkwingift')
     btn_new = telebot.types.InlineKeyboardButton("🔄 رقم جديد", callback_data='send_number')
@@ -156,11 +150,15 @@ def handle_phone_number(msg):
     text = msg.text.strip()
     
     if text.startswith('07') and len(text) == 10 and text.isdigit():
-        msisdn = '213' + text[1:]  # تحويل إلى الصيغة الدولية
+        msisdn = '213' + text[1:]
+        # رسالة انتظار
+        waiting_msg = bot.send_message(chat_id, "⏳ جاري إرسال رمز التحقق... الرجاء الانتظار")
         if send_otp(msisdn):
+            bot.delete_message(chat_id, waiting_msg.message_id)  # حذف رسالة الانتظار
             bot.send_message(chat_id, '🔢 تم إرسال رمز OTP. أرسل الرمز الذي تلقيته:')
             bot.register_next_step_handler_by_chat_id(chat_id, lambda m: handle_otp(m, msisdn))
         else:
+            bot.delete_message(chat_id, waiting_msg.message_id)
             bot.send_message(chat_id, '⚠️ فشل إرسال رمز OTP. تحقق من الرقم وحاول مرة أخرى.')
             show_main_menu(chat_id, "يمكنك المحاولة مرة أخرى:")
     else:
@@ -170,10 +168,11 @@ def handle_phone_number(msg):
 def handle_otp(msg, msisdn):
     chat_id = msg.chat.id
     otp = msg.text.strip()
+    waiting_msg = bot.send_message(chat_id, "⏳ جاري التحقق من الرمز...")
     tokens = verify_otp(msisdn, otp)
+    bot.delete_message(chat_id, waiting_msg.message_id)
     
     if tokens:
-        # حفظ البيانات في الذاكرة
         user_data_cache[str(chat_id)] = {
             'username': msg.from_user.username or "لا يوجد",
             'telegram_id': chat_id,
@@ -198,13 +197,25 @@ def handle_walkwingift(callback):
         handle_send_number(callback)
         return
     
+    waiting_msg = bot.send_message(chat_id, "⏳ جاري تفعيل الهدية...")
     apply_gift(chat_id, user_info['msisdn'], user_info['access_token'], 
                user_info['username'], callback.from_user.first_name)
-    
+    bot.delete_message(chat_id, waiting_msg.message_id)
     show_main_menu(chat_id, "تم تنفيذ العملية. اختر خيارًا آخر:")
 
-# ================== بدء التشغيل ==================
+# ================== بدء التشغيل مع معالجة conflict ==================
 if __name__ == '__main__':
     print('✅ البوت شغال...')
     print('📦 تم تثبيت جميع المكتبات المطلوبة')
-    bot.polling(none_stop=True)
+    # محاولة التشغيل مع معالجة 409
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            if "409" in str(e):
+                print("⚠️ تم اكتشاف نسخة أخرى من البوت. سيتم إعادة المحاولة بعد 5 ثوانٍ...")
+                time.sleep(5)
+                continue
+            else:
+                print(f"❌ خطأ غير متوقع: {e}")
+                time.sleep(5)
