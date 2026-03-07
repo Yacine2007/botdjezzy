@@ -5,7 +5,7 @@ import sys
 import time
 
 def install_packages():
-    packages = ['pyTelegramBotAPI==4.14.0', 'requests==2.31.0']
+    packages = ['pyTelegramBotAPI==4.14.0', 'requests==2.31.0', 'flask==2.3.3']
     for package in packages:
         try:
             __import__(package.split('==')[0].lower())
@@ -22,33 +22,29 @@ import os
 from datetime import datetime, timedelta
 from telebot import apihelper
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from flask import Flask
 
-# ================== Render Port Solution ==================
-# IMPORTANT: This MUST run before anything else on Render
-if os.environ.get('RENDER') or os.environ.get('PORT'):
-    print("🌐 Render environment detected, starting HTTP server...")
-    
-    class HealthCheckHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b"Bot is running")
-        def log_message(self, format, *args): pass
+# ================== Flask server for Render ==================
+# هذا يحل مشكلة المنفذ - نفس البيئة المحلية تماماً
+app = Flask(__name__)
 
-    def run_http_server():
-        port = int(os.environ.get('PORT', 10000))
-        server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-        print(f"🌐 HTTP dummy server running on port {port}")
-        server.serve_forever()
+@app.route('/')
+def home():
+    return "Bot is running!"
 
-    # Start HTTP server in a separate thread
-    http_thread = threading.Thread(target=run_http_server, daemon=True)
-    http_thread.start()
-    print("✅ HTTP dummy server started successfully")
-    time.sleep(2)  # Give it time to start
-else:
-    print("📱 Running locally - no HTTP server needed")
+@app.route('/health')
+def health():
+    return "OK", 200
+
+def run_flask():
+    port = int(os.environ.get('PORT', 10000))
+    print(f"🌐 Flask server running on port {port}")
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+
+# تشغيل Flask في خيط منفصل
+flask_thread = threading.Thread(target=run_flask, daemon=True)
+flask_thread.start()
+print("✅ Flask server started - bot will run normally")
 
 # ================== Bot Configuration ==================
 BOT_TOKEN = '8715052656:AAHifc8Q1Ns-u0twtvXIVS8GIpViIvQ0pHE'
@@ -274,19 +270,12 @@ def handle_walkwingift(callback):
 
 # ================== Start Bot ==================
 if __name__ == '__main__':
-    print('✅ Bot is ready')
+    print('✅ Bot is ready with Flask server')
+    print('🚀 Bot polling started - same as local execution')
     
     while True:
         try:
             bot.polling(none_stop=True, interval=0, timeout=20)
-        except apihelper.ApiTelegramException as e:
-            if "409" in str(e):
-                print("⚠️ Conflict detected, retrying in 10 seconds...")
-                time.sleep(10)
-                bot.remove_webhook()
-            else:
-                print(f"❌ Telegram API Error: {e}")
-                time.sleep(5)
         except Exception as e:
-            print(f"❌ General Error: {e}")
+            print(f"❌ Error: {e}")
             time.sleep(5)
