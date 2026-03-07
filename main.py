@@ -10,7 +10,7 @@ def install_packages():
         try:
             __import__(package.split('==')[0].lower())
         except ImportError:
-            print(f'📦 جاري تثبيت {package}...')
+            print(f'📦 Installing {package}...')
             subprocess.check_call([sys.executable, '-m', 'pip', 'install', package])
 
 install_packages()
@@ -32,57 +32,60 @@ class HealthCheckHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Bot is running")
     
     def log_message(self, format, *args):
-        pass  # إلغاء التسجيل لتجنب الإزعاج
+        pass
 
 def run_http_server():
     port = int(os.environ.get('PORT', 10000))
     server = HTTPServer(('0.0.0.0', port), HealthCheckHandler)
-    print(f"🌐 خادم HTTP الوهمي يعمل على المنفذ {port}")
+    print(f"🌐 HTTP dummy server running on port {port}")
     server.serve_forever()
 
-# تشغيل الخادم في خيط منفصل
 http_thread = threading.Thread(target=run_http_server, daemon=True)
 http_thread.start()
-print("✅ تم تشغيل خادم HTTP الوهمي لتلبية متطلبات Render")
+print("✅ HTTP dummy server started for Render")
 
 # ================== تكوين البوت ==================
 BOT_TOKEN = os.getenv('BOT_TOKEN', '8715052656:AAGLzpeGJTOaibykJhV8bbL-fn1ge9o8uhk')
 bot = telebot.TeleBot(BOT_TOKEN)
 
-# محاولة إزالة أي webhook عالق (لمنع conflict 409)
+# إزالة webhook
 try:
     bot.remove_webhook()
     time.sleep(1)
 except Exception as e:
-    print(f"⚠️ لم نتمكن من إزالة webhook: {e}")
+    print(f"⚠️ Could not remove webhook: {e}")
 
-# تخزين مؤقت في الذاكرة (بدلاً من ملف JSON)
+# تخزين مؤقت
 user_data_cache = {}
 
-# ================== دوال مساعدة ==================
-def hide_phone_number(phone_number):
-    """إخفاء الرقم ما عدا أول 4 وآخر رقمين"""
-    return phone_number[:4] + '*******' + phone_number[-2:]
-
+# ================== دالة إرسال OTP (مطابقة للسكربت المحلي) ==================
 def send_otp(msisdn):
-    """إرسال رمز OTP للرقم"""
+    """إرسال رمز OTP - نفس السكربت المحلي الذي عمل"""
     url = 'https://apim.djezzy.dz/oauth2/registration'
     payload = f'msisdn={msisdn}&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&scope=smsotp'
     headers = {
         'User-Agent': 'Djezzy/2.6.7',
         'Connection': 'close',
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Cache-Control': 'no-cache'
+        'Cache-Control': 'no-cache',
+        'Accept': 'application/json'
     }
     try:
-        response = requests.post(url, data=payload, headers=headers, timeout=10)
-        return response.status_code == 200
+        print(f"📤 Sending OTP to: {msisdn}")
+        response = requests.post(url, data=payload, headers=headers, timeout=15)
+        print(f"📥 Status code: {response.status_code}")
+        print(f"📥 Response: {response.text}")
+        
+        if response.status_code == 200:
+            return True
+        else:
+            print(f"⚠️ Failed with status {response.status_code}")
+            return False
     except requests.RequestException as e:
-        print(f'⚠️ خطأ في إرسال OTP: {e}')
+        print(f'⚠️ Error sending OTP: {e}')
         return False
 
 def verify_otp(msisdn, otp):
-    """التحقق من رمز OTP واسترجاع التوكنات"""
     url = 'https://apim.djezzy.dz/oauth2/token'
     payload = f'otp={otp}&mobileNumber={msisdn}&scope=openid&client_id=6E6CwTkp8H1CyQxraPmcEJPQ7xka&client_secret=MVpXHW_ImuMsxKIwrJpoVVMHjRsa&grant_type=mobile'
     headers = {
@@ -97,16 +100,15 @@ def verify_otp(msisdn, otp):
             return response.json()
         return None
     except requests.RequestException as e:
-        print(f'⚠️ خطأ في التحقق من OTP: {e}')
+        print(f'⚠️ Error verifying OTP: {e}')
         return None
 
 def apply_gift(chat_id, msisdn, access_token, username, name):
-    """تفعيل الهدية للمستخدم"""
     user_info = user_data_cache.get(str(chat_id))
     if user_info and user_info.get('last_applied'):
         last_time = datetime.fromisoformat(user_info['last_applied'])
         if datetime.now() - last_time < timedelta(days=1):
-            bot.send_message(chat_id, "⚠️ لا يمكنك استخدام الهدية الآن. الرجاء الانتظار 24 ساعة من آخر استخدام.")
+            bot.send_message(chat_id, "⚠️ You cannot use the gift now. Please wait 24 hours.")
             return False
 
     gift_code = 'GIFTWALKWIN2GO'
@@ -139,11 +141,11 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
         if response_data.get('message') == expected_msg:
             hidden_phone = hide_phone_number(msisdn)
             success_msg = (
-                f"🎉 تم تفعيل الهدية {gift_code} بنجاح!\n\n"
-                f"📣 **تفاصيل المستخدم:**\n"
-                f"👤 الاسم: {name}\n"
-                f"🧑‍💻 المعرف: @{username}\n"
-                f"📞 الرقم: {hidden_phone}\n"
+                f"🎉 Gift {gift_code} activated successfully!\n\n"
+                f"📣 **User details:**\n"
+                f"👤 Name: {name}\n"
+                f"🧑‍💻 Username: @{username}\n"
+                f"📞 Phone: {hidden_phone}\n"
             )
             bot.send_message(chat_id, success_msg, parse_mode='Markdown')
             
@@ -151,33 +153,35 @@ def apply_gift(chat_id, msisdn, access_token, username, name):
                 user_data_cache[str(chat_id)]['last_applied'] = datetime.now().isoformat()
             return True
         else:
-            bot.send_message(chat_id, f"⚠️ حدث خطأ: {response_data.get('message', 'غير معروف')}")
+            bot.send_message(chat_id, f"⚠️ Error: {response_data.get('message', 'unknown')}")
             return False
     except requests.RequestException as e:
-        print(f'⚠️ خطأ في تطبيق الهدية: {e}')
-        bot.send_message(chat_id, "⚠️ حدث خطأ أثناء تطبيق الهدية. حاول مرة أخرى لاحقًا.")
+        print(f'⚠️ Error applying gift: {e}')
+        bot.send_message(chat_id, "⚠️ Error applying gift. Try again later.")
         return False
 
-def show_main_menu(chat_id, text="اختر الإجراء الذي تود القيام به:"):
-    """عرض القائمة الرئيسية بالأزرار"""
+def hide_phone_number(phone_number):
+    return phone_number[:4] + '*******' + phone_number[-2:]
+
+def show_main_menu(chat_id, text="Choose an action:"):
     markup = telebot.types.InlineKeyboardMarkup(row_width=2)
-    btn_gift = telebot.types.InlineKeyboardButton("🎁 تفعيل هدية Walkwin", callback_data='walkwingift')
-    btn_new = telebot.types.InlineKeyboardButton("🔄 رقم جديد", callback_data='send_number')
+    btn_gift = telebot.types.InlineKeyboardButton("🎁 Activate Walkwin Gift", callback_data='walkwingift')
+    btn_new = telebot.types.InlineKeyboardButton("🔄 New Number", callback_data='send_number')
     markup.add(btn_gift, btn_new)
     bot.send_message(chat_id, text, reply_markup=markup)
 
-# ================== معالجات البوت ==================
+# ================== Bot Handlers ==================
 @bot.message_handler(commands=['start'])
 def handle_start(msg):
     chat_id = msg.chat.id
     markup = telebot.types.InlineKeyboardMarkup()
-    markup.add(telebot.types.InlineKeyboardButton(text='📱 إرسال رقم الهاتف', callback_data='send_number'))
-    bot.send_message(chat_id, '👋 مرحبًا! الرجاء إرسال رقم هاتف Djezzy الخاص بك (يبدأ بــ 07).', reply_markup=markup)
+    markup.add(telebot.types.InlineKeyboardButton(text='📱 Send Phone Number', callback_data='send_number'))
+    bot.send_message(chat_id, '👋 Welcome! Please send your Djezzy phone number (starts with 07).', reply_markup=markup)
 
 @bot.callback_query_handler(func=lambda call: call.data == 'send_number')
 def handle_send_number(callback):
     chat_id = callback.message.chat.id
-    bot.send_message(chat_id, '📱 أرسل رقم هاتفك الآن (10 أرقام تبدأ بـ 07):')
+    bot.send_message(chat_id, '📱 Send your phone number now (10 digits starting with 07):')
     bot.register_next_step_handler_by_chat_id(chat_id, handle_phone_number)
 
 def handle_phone_number(msg):
@@ -185,43 +189,41 @@ def handle_phone_number(msg):
     text = msg.text.strip()
     
     if text.startswith('07') and len(text) == 10 and text.isdigit():
-        msisdn = '213' + text[1:]  # تحويل إلى الصيغة الدولية
-        # إرسال رسالة انتظار
-        waiting_msg = bot.send_message(chat_id, "⏳ جاري إرسال رمز التحقق... الرجاء الانتظار")
+        msisdn = '213' + text[1:]
+        waiting_msg = bot.send_message(chat_id, "⏳ Sending verification code... Please wait")
         if send_otp(msisdn):
             bot.delete_message(chat_id, waiting_msg.message_id)
-            bot.send_message(chat_id, '🔢 تم إرسال رمز OTP. أرسل الرمز الذي تلقيته:')
+            bot.send_message(chat_id, '🔢 OTP code sent. Please enter the code you received:')
             bot.register_next_step_handler_by_chat_id(chat_id, lambda m: handle_otp(m, msisdn))
         else:
             bot.delete_message(chat_id, waiting_msg.message_id)
-            bot.send_message(chat_id, '⚠️ فشل إرسال رمز OTP. تحقق من الرقم وحاول مرة أخرى.')
-            show_main_menu(chat_id, "يمكنك المحاولة مرة أخرى:")
+            bot.send_message(chat_id, '⚠️ Failed to send OTP. Check the number and try again.')
+            show_main_menu(chat_id, "Try again:")
     else:
-        bot.send_message(chat_id, '⚠️ رقم غير صالح. يجب أن يبدأ بـ 07 ويتكون من 10 أرقام.')
-        show_main_menu(chat_id, "أعد المحاولة:")
+        bot.send_message(chat_id, '⚠️ Invalid number. Must start with 07 and be 10 digits.')
+        show_main_menu(chat_id, "Try again:")
 
 def handle_otp(msg, msisdn):
     chat_id = msg.chat.id
     otp = msg.text.strip()
-    waiting_msg = bot.send_message(chat_id, "⏳ جاري التحقق من الرمز...")
+    waiting_msg = bot.send_message(chat_id, "⏳ Verifying code...")
     tokens = verify_otp(msisdn, otp)
     bot.delete_message(chat_id, waiting_msg.message_id)
     
     if tokens:
-        # حفظ البيانات في الذاكرة
         user_data_cache[str(chat_id)] = {
-            'username': msg.from_user.username or "لا يوجد",
+            'username': msg.from_user.username or "none",
             'telegram_id': chat_id,
             'msisdn': msisdn,
             'access_token': tokens['access_token'],
             'refresh_token': tokens['refresh_token'],
             'last_applied': None
         }
-        bot.send_message(chat_id, '✅ تم التحقق بنجاح!')
+        bot.send_message(chat_id, '✅ Verification successful!')
         show_main_menu(chat_id)
     else:
-        bot.send_message(chat_id, '⚠️ رمز OTP غير صحيح. حاول مرة أخرى.')
-        show_main_menu(chat_id, "أعد إدخال الرقم أو حاول مرة أخرى:")
+        bot.send_message(chat_id, '⚠️ Invalid OTP code. Try again.')
+        show_main_menu(chat_id, "Enter number again or try again:")
 
 @bot.callback_query_handler(func=lambda call: call.data == 'walkwingift')
 def handle_walkwingift(callback):
@@ -229,39 +231,37 @@ def handle_walkwingift(callback):
     user_info = user_data_cache.get(str(chat_id))
     
     if not user_info:
-        bot.send_message(chat_id, "⚠️ لم تقم بتسجيل الدخول بعد. أرسل رقمك أولاً.")
+        bot.send_message(chat_id, "⚠️ You haven't logged in yet. Send your number first.")
         handle_send_number(callback)
         return
     
-    waiting_msg = bot.send_message(chat_id, "⏳ جاري تفعيل الهدية...")
+    waiting_msg = bot.send_message(chat_id, "⏳ Activating gift...")
     apply_gift(chat_id, user_info['msisdn'], user_info['access_token'], 
                user_info['username'], callback.from_user.first_name)
     bot.delete_message(chat_id, waiting_msg.message_id)
-    show_main_menu(chat_id, "تم تنفيذ العملية. اختر خيارًا آخر:")
+    show_main_menu(chat_id, "Operation completed. Choose another action:")
 
-# ================== بدء التشغيل مع معالجة الأخطاء ==================
+# ================== Start Bot ==================
 if __name__ == '__main__':
-    print('✅ بدء تشغيل البوت...')
-    print('📦 تم تثبيت جميع المكتبات المطلوبة')
+    print('✅ Starting bot...')
+    print('📦 All packages installed')
     
-    # حلقة لا نهائية لمعالجة الخطأ 409 وإعادة المحاولة
     while True:
         try:
-            print('🚀 البوت يعمل الآن...')
+            print('🚀 Bot is running...')
             bot.polling(none_stop=True, interval=0, timeout=20)
         except apihelper.ApiTelegramException as e:
             if "409" in str(e):
-                print("⚠️ تم اكتشاف نسخة أخرى من البوت (خطأ 409). جاري إعادة المحاولة بعد 10 ثوانٍ...")
+                print("⚠️ Another bot instance detected (409). Retrying in 10 seconds...")
                 time.sleep(10)
-                # محاولة إزالة webhook مرة أخرى
                 try:
                     bot.remove_webhook()
                 except:
                     pass
                 continue
             else:
-                print(f"❌ خطأ غير متوقع: {e}")
+                print(f"❌ Unexpected error: {e}")
                 time.sleep(5)
         except Exception as e:
-            print(f"❌ خطأ عام: {e}")
+            print(f"❌ General error: {e}")
             time.sleep(5)
