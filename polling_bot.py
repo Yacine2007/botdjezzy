@@ -6,7 +6,6 @@ import os
 import time
 import logging
 from datetime import datetime, timedelta
-from flask import Flask, request, abort
 
 # ================== Logging ==================
 logging.basicConfig(
@@ -16,19 +15,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ================== Configuration ==================
-BOT_TOKEN = os.environ.get('BOT_TOKEN', '8715052656:AAHifc8Q1Ns-u0twtvXIVS8GIpViIvQ0pHE')
-RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL', '')  # مثال: https://my-bot.onrender.com
-PORT = int(os.environ.get('PORT', 10000))
+BOT_TOKEN = os.environ.get('BOT_TOKEN', '')
+if not BOT_TOKEN:
+    raise ValueError("❌ BOT_TOKEN غير محدد في متغيرات البيئة!")
 
-if not RENDER_URL:
-    logger.error("❌ RENDER_EXTERNAL_URL غير محددة في متغيرات البيئة!")
-
-# ================== Bot & Flask Setup ==================
-bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
-app = Flask(__name__)
+bot = telebot.TeleBot(BOT_TOKEN, threaded=True)
 
 # In-memory storage
 user_data_cache = {}
+
+# ================== Cleanup ==================
+logger.info("🔧 تنظيف الجلسة...")
+try:
+    bot.remove_webhook()
+    time.sleep(2)
+    updates = bot.get_updates(offset=-1, timeout=1)
+    if updates:
+        bot.get_updates(offset=updates[-1].update_id + 1, timeout=1)
+    logger.info("✅ تم تنظيف الجلسة")
+except Exception as e:
+    logger.warning(f"⚠️ تحذير أثناء التنظيف: {e}")
 
 # ================== Helper Functions ==================
 def hide_phone_number(phone_number):
@@ -47,17 +53,16 @@ def send_otp(msisdn):
     try:
         logger.info(f"📤 إرسال OTP إلى: {msisdn}")
         response = requests.post(url, data=payload, headers=headers, timeout=20)
-        logger.info(f"📥 Status: {response.status_code}")
-        logger.info(f"📥 Response: {response.text}")
+        logger.info(f"📥 Status: {response.status_code} | Response: {response.text}")
         return response.status_code == 200
     except requests.exceptions.ConnectionError as e:
-        logger.error(f'❌ ConnectionError - الخادم محجوب أو غير متاح: {e}')
+        logger.error(f'❌ ConnectionError: {e}')
         return False
     except requests.exceptions.Timeout as e:
-        logger.error(f'❌ Timeout - انتهت مهلة الاتصال بـ Djezzy: {e}')
+        logger.error(f'❌ Timeout: {e}')
         return False
     except requests.RequestException as e:
-        logger.error(f'❌ RequestError [{type(e).__name__}]: {e}')
+        logger.error(f'❌ RequestError: {e}')
         return False
 
 def verify_otp(msisdn, otp):
@@ -237,61 +242,12 @@ def handle_walkwingift(callback):
     bot.delete_message(chat_id, waiting_msg.message_id)
     show_main_menu(chat_id, "تم تنفيذ العملية. اختر خيارًا آخر:")
 
-# ================== Flask Routes ==================
-@app.route(f'/{BOT_TOKEN}', methods=['POST'])
-def webhook():
-    """استقبال التحديثات من Telegram عبر Webhook"""
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return 'OK', 200
-    else:
-        abort(403)
-
-@app.route('/set_webhook', methods=['GET'])
-def set_webhook():
-    """تفعيل الـ Webhook يدويًا عند الحاجة"""
-    webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
-    bot.remove_webhook()
-    time.sleep(1)
-    result = bot.set_webhook(url=webhook_url)
-    if result:
-        return f'✅ Webhook تم تفعيله على: {webhook_url}', 200
-    else:
-        return '❌ فشل تفعيل Webhook', 500
-
-@app.route('/health', methods=['GET'])
-def health():
-    """فحص حالة الخادم"""
-    return {'status': 'running', 'webhook': f"{RENDER_URL}/{BOT_TOKEN}"}, 200
-
-@app.route('/', methods=['GET'])
-def index():
-    return '🤖 Bot is running via Webhook!', 200
-
-# ================== Start ==================
-def setup_webhook():
-    """إعداد الـ Webhook عند بدء التشغيل"""
-    if not RENDER_URL:
-        logger.error("❌ RENDER_EXTERNAL_URL غير محددة! لن يتم تفعيل Webhook.")
-        return
-
-    webhook_url = f"{RENDER_URL}/{BOT_TOKEN}"
-    logger.info(f"🔧 إعداد Webhook على: {webhook_url}")
-
-    try:
-        bot.remove_webhook()
-        time.sleep(2)
-        result = bot.set_webhook(url=webhook_url)
-        if result:
-            logger.info(f"✅ Webhook تم تفعيله بنجاح")
-        else:
-            logger.error("❌ فشل تفعيل Webhook")
-    except Exception as e:
-        logger.error(f"❌ خطأ في إعداد Webhook: {e}")
-
+# ================== Start Polling ==================
 if __name__ == '__main__':
-    setup_webhook()
-    logger.info(f"🚀 تشغيل الخادم على المنفذ {PORT}")
-    app.run(host='0.0.0.0', port=PORT, debug=False)
+    logger.info("🚀 البوت يعمل بوضع Polling...")
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=25)
+        except Exception as e:
+            logger.error(f"❌ خطأ: {e}")
+            time.sleep(5)
