@@ -1,0 +1,27 @@
+name: 🤖 Djezzy Bot
+
+on:
+  schedule:
+    - cron: '*/25 * * * *'  # يعيد التشغيل تلقائياً كل 25 دقيقة
+  workflow_dispatch:          # زر تشغيل يدوي من GitHub
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 تحميل الكود
+        uses: actions/checkout@v3
+
+      - name: 🐍 إعداد Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 📦 تثبيت المكتبات
+        run: pip install pyTelegramBotAPI requests
+
+      - name: 🚀 تشغيل البوت (23 دقيقة)
+        env:
+          BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        run: timeout 1380 python polling_bot.py || true
